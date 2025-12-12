@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Everything Helps — Buddy’s Book (v10)</title>
+<style>
+
+:root{
+  --bg:#000;
+  --paper:#eadcc1;   /* page color */
+  --ink:#111;        /* text color */
+  --glow: rgba(0,255,0,.35);
+}
+
+*{box-sizing:border-box}
+html,body{
+  margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+  overflow:hidden;-webkit-tap-highlight-color:transparent; user-select:none;
+}
+
+/* subtle neon-ish backdrop */
+body::before{
+  content:"";position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(1000px 560px at 50% 82%,rgba(0,255,0,.05),transparent 60%),
+    radial-gradient(700px 380px at 18% 12%,rgba(0,255,0,.03),transparent 60%),
+    #000;
+}
+
+/* STAGE */
+.stage{position:fixed;inset:0;display:grid;place-items:center;z-index:1}
+
+/* Bigger book by default */
+.view{
+  width:min(98vw,640px);
+  height:min(90vh,1024px);
+  perspective:2000px; touch-action:none; cursor:grab;
+}
+.view.grabbing{cursor:grabbing}
+
+/* On small screens, still give it some size */
+@media (max-width:420px){
+  .view{ width:96vw; height:92vh; }
+}
+
+/* BOOK */
+.book{
+  position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  transform:rotateX(8deg) rotateY(-18deg);
+  transition:transform .6s cubic-bezier(.2,.7,.1,1);
+  box-shadow:0 44px 140px rgba(0,0,0,.75); border-radius:12px;
+  will-change:transform;
+}
+.book.open{transform:rotateX(0) rotateY(0)}
+
+.cover,.back{
+  position:absolute; inset:0; border-radius:12px;
+  background:linear-gradient(145deg,#2a2a2a,#111);
+  box-shadow:inset 0 0 0 2px rgba(255,255,255,.06);
+  transform-style:preserve-3d;
+}
+.cover{
+  transform-origin:left center; transform:translateZ(6px) rotateY(0);
+  z-index:5; backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  overflow:hidden;
+}
+.book.open .cover{
+  transform:translateZ(6px) rotateY(-170deg);
+  transition:transform .7s cubic-bezier(.2,.7,.1,1);
+}
+.back{ transform-origin:right center; transform:translateZ(-6px) }
+
+/* COVER CONTENT */
+.title-wrap{
+  position:absolute; inset:0; display:grid; place-items:center;
+  color:#f4f4f4; text-align:center; padding:28px;
+}
+.title-wrap h1{margin:0 0 8px; font-size:clamp(24px,6.5vw,38px)}
+.title-wrap h2{margin:0; font-size:clamp(12px,3.5vw,16px); opacity:.9}
+.hint{position:absolute; bottom:14px; left:0; right:0; text-align:center; color:#ccc; font-size:12px; opacity:.85}
+
+/* Optional overlay image (logo/silhouette) */
+.cover .overlay{
+  position:absolute; inset:auto; left:50%; top:46%;
+  transform:translate(-50%,-50%);
+  max-width:72%; height:auto; opacity:.95; filter:drop-shadow(0 0 14px var(--glow));
+  pointer-events:none; user-select:none;
+  border-radius:8px;
+}
+
+/* Gentle title glow */
+@keyframes pulse { 0%,100%{ text-shadow:0 0 0 transparent } 50%{ text-shadow:0 0 16px rgba(0,255,0,.35) } }
+.title-wrap h1{ animation:pulse 3s ease-in-out infinite }
+
+/* PAGES STACK */
+.folio{
+  position:absolute; inset:12px; left:14px; right:14px;
+  transform-style:preserve-3d; overflow:hidden;
+}
+.leaf{
+  position:absolute; inset:0; transform-style:preserve-3d;
+  will-change:transform;
+}
+
+.page{
+  position:absolute; top:0; bottom:0; width:50%;
+  background:var(--paper); border-radius:8px; overflow:hidden;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  transform-style:preserve-3d;
+}
+.page.left { left:0;  transform-origin:right center; }
+.page.right{ right:0; transform-origin:left  center;  }
+
+/* right sheet rotates to the left when leaf is flipped */
+.leaf .right{
+  transform:rotateY(0deg) translateZ(1px);
+  transition:transform .68s cubic-bezier(.2,.7,.1,1);
+}
+.leaf.flipped .right{
+  transform:rotateY(-180deg) translateZ(1px);
+  pointer-events:none; /* prevent accidental taps during flip */
+}
+
+/* fold shading (prevents “letter overlap” flicker) */
+.page.right::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg, rgba(0,0,0,.08), transparent 35%);
+  pointer-events:none;
+}
+.leaf.flipped .page.right::after{
+  background:linear-gradient(270deg, rgba(0,0,0,.10), transparent 35%);
+}
+
+/* page content */
+.paper{
+  position:absolute; inset:0; padding:26px 22px 26px;
+  overflow:auto; line-height:1.6; font-size:clamp(14px,3.4vw,18px);
+}
+.paper h3{margin:0 0 8px; font-size:clamp(16px,4vw,20px)}
+.paper p{margin:10px 0}
+.section-label{
+  position:absolute; top:10px; left:12px; font-size:10px;
+  opacity:.55; letter-spacing:.12em; text-transform:uppercase;
+}
+
+/* helper */
+.footer{position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
+  color:#777; font-size:12px; z-index:2}
+@media(max-width:420px){ .paper{padding:20px} }
+
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="view" id="view" aria-label="book view">
+    <div class="book" id="book">
+      <div class="cover" id="frontCover">
+        <!-- OPTIONAL overlay image (set via JS or edit src below) -->
+        <img class="overlay" id="coverOverlay" src="" alt="" hidden>
+
+        <div class="title-wrap">
+          <div>
+            <h1>Everything Helps</h1>
+            <h2>Buddy’s Story — Told by the Dog</h2>
+            <div class="hint">Drag to rotate • Double-tap to open</div>
+          </div>
+        </div>
+      </div>
+      <div class="back" aria-hidden="true"></div>
+      <div class="folio" id="folio"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">Swipe to flip pages • Tap a TOC link to jump</div>
+
+<script>
+(function(){
+/* ========= Optional: set a cover image via URL parameter =========
+   Example:  index.html?cover=https://your.cdn/buddy.png
+   Or set a default path below by editing defaultCover.
+*/
+const params = new URLSearchParams(location.search);
+const paramCover = params.get('cover');
+const defaultCover = ""; // e.g. "cover.png"
+const coverImg = document.getElementById('coverOverlay');
+const useCover = paramCover || defaultCover;
+if(useCover){
+  coverImg.src = useCover;
+  coverImg.hidden = false;
+}
+
+/* ========= FULL STORY (12 chapters; edit freely) ========= */
+const chapters = [
+  {title:"Table of Contents", html:`
+    <p><a href="#" data-go="1">1 — Shade and Sandwiches</a></p>
+    <p><a href="#" data-go="2">2 — The Fry Bag Lady</a></p>
+    <p><a href="#" data-go="3">3 — Daddy’s in Distress</a></p>
+    <p><a href="#" data-go="4">4 — The Night He Couldnt Sleep</a></p>
+    <p><a href="#" data-go="5">5 — Buddy’s Route</a></p>
+    <p><a href="#" data-go="6">6 — Rainy Day Royalties</a></p>
+    <p><a href="#" data-go="7">7 — A-O-K</a></p>
+    <p><a href="#" data-go="8">8 — Blue Lights and Heartbeats</a></p>
+    <p><a href="#" data-go="9">9 — No More Bugs</a></p>
+    <p><a href="#" data-go="10">10 — Everything Helps</a></p>
+    <p><a href="#" data-go="11">11 - To Be Contiued…</a></p>
+    <p><a href="#" data-go="12">12 — To Be Contiued…</a></p>
+  `},
+
+  {title:"Shade and Sandwiches", html:`
+    <p>I don’t know the tall guy’s name.
+He never told me, and I never asked.
+Doesn’t matter. I know his walk, his smell, the sound his boots make when he’s thinking too much.
+That’s enough.
+
+Every morning we leave wherever we were sleeping and head toward the noisy road.
+The one that roars like a river made of metal.
+He calls it a bridge.
+I call it the hot place with the treats.
+
+There’s not much shade up there, just a thin strip under the railing.
+He always finds it and stands so I can sit in the cool part of his shadow.
+He moves when the sun moves—like he’s chasing it for me.
+That’s how I know I belong to him.
+
+He holds the square board with the black scratches on it.
+Humans look at it, then at him, then at me.
+Sometimes they wave.
+Sometimes they roll down a window and toss something that smells like heaven:
+crinkly paper, soft bread, nuggets—golden little dreams that crunch.
+He laughs, breaks one in half, gives me my share.
+That’s the deal. I handle the wagging, he handles the sign.
+
+There’s the sugar-smelling lady who always waves first.
+And the man with the loud truck who shouts, “Stay cool, Buddy!”
+I like him—he means it.
+Some people just look away, and that’s fine.
+You can’t smell kindness on everyone.
+
+By the time the sun slides low, my tongue’s tired and his eyes look smaller.
+We walk to the place that smells like grilled meat and loud music.
+I don’t know what it’s called.
+Inside it’s cold on my paws, and the tall guy talks to people who smell like laughter.
+A server drops something round and juicy near my face—best accident ever.
+He winks at me like we planned it.
+
+When we head back out, the air’s cooler, softer.
+He pats my head, that slow, heavy pat that says we made it another day.
+He doesn’t say much else, and he doesn’t need to.
+I already know what he means.
+
+We walk under the stars until the road hum fades.
+I stay close so his shadow covers me even at night.
+That’s my spot—the good spot—where the world still smells like fries, asphalt, and love. </p>
+  `},
+
+  {title:"Fry Bag Lady", html:`
+    <p> Same road. Same sound.
+Hot air wiggles off the ground like the world’s cooking itself.
+The tall guy stops where the noise is loudest and the ground feels rough.
+That means we’re working again.
+He sets his board down. I flop beside his shoes, tail sweeping dust.
+His shadow covers me; that’s my whole house right there.
+
+We wait.
+I sniff wind, listen for crinkle noises, hope for a squeaky brake.
+That’s when she shows up—the one with the bag that smells like salt and kindness.
+Her car always coughs a little before it stops.
+Window slides down, hand comes out, bag in it.
+She talks in the soft-high voice humans use for puppies.
+I already know what’s inside.
+
+The guy says, “Morning,” in his tired voice.
+She smiles and says something about staying cool.
+Then thunk—bag drops into his hands.
+He laughs.
+I wag hard enough to make dust dance.
+
+The smell hits first—fries.
+Perfect, oily, golden fries.
+He gives me one, then another.
+I crunch loud on purpose so he knows I’m thankful.
+He eats one too, slow, like he’s memorizing it.
+That’s how you eat when you don’t know when the next one’s coming.
+
+People keep rolling by, some fast, some slower.
+Kids wave, phones shine, windows roll back up.
+I don’t care.
+We got fries.
+
+When the bag’s empty, he folds it flat and tucks it away.
+He always does that.
+He says trash blows away and makes people mad.
+I don’t know who “people” are, but I trust him.
+He moves his feet so his shadow still covers me.
+I yawn, stretch, settle in again.
+
+That’s the rhythm of it:
+stand, wag, wait, fry, nap.
+The workday of a bridge dog.
+
+I think about that lady sometimes when we’re walking at night.
+She doesn’t smell like the others.
+She smells like something that remembers you.
+If heaven has a drive-thru, she’s probably running it.
+</p>
+  `},
+
+  {title:"Daddy’s in Distress", html:`
+    <p> Something changed in the air.
+It’s not smell or sound — it’s a feeling, thick like a storm before thunder.
+He’s quiet again.
+That deep kind of quiet that makes my chest hurt too.
+
+He sits.
+Doesn’t look at me.
+Doesn’t look anywhere.
+Just… sinks.
+
+So I stand guard.
+I press close enough for him to feel my side breathing against his leg.
+That’s my signal — I’m here.
+He doesn’t have to talk. He doesn’t have to pretend.
+
+Every noise around us fades, like the world knows this is serious.
+I scan, ears up.
+I don’t let anyone near him — not even the wind if I can help it.
+If something moves, I watch it.
+If something stares, I stare back harder.
+No one touches him when he’s like this.
+That’s my rule.
+
+He says words sometimes, small ones that I don’t understand.
+They don’t sound angry. They sound tired.
+Tired is worse than angry.
+Angry still has fire.
+Tired just… fades.
+
+I push my head under his hand until he remembers what to do.
+He scratches behind my ear, slow and gentle.
+That means I’m still doing my job.
+
+He sighs.
+I wag once, real low.
+Just enough to tell him, Hey, I got you. Still here.
+
+I don’t protect him because I have to.
+I protect him because he’s mine.
+Because when he’s quiet like this, I know the world feels heavy.
+And I was built to carry some of that weight for him.
+
+He doesn’t know it, but I count his breaths.
+If one skips, I nudge him.
+If they get too deep, I lean harder.
+I’m not going anywhere.
+
+Daddy’s in distress.
+But I’m in mode.
+Everything else can wait.
+The world can fall apart later.
+Right now — it’s just me, and him, and one more breath we take together. </p>
+  `},
+
+  {title:"The Night He Couldnt Sleep", html:`
+    <p> He turns a lot when he can’t sleep.
+Every toss has a sound I know — the sigh, the pull of the blanket, the small curse under his breath.
+He thinks I’m asleep.
+I’m not.
+I never am when he’s like this.
+
+The dark is quiet, but not empty.
+I can hear his heart in the silence, beating fast sometimes, slow sometimes.
+I match my breathing to his — in, out, steady.
+That’s how I remind him we’re still here.
+
+Sometimes he talks to nobody.
+Sometimes he just stares.
+I don’t understand the words, but I understand the feeling.
+It smells like fear and memory and the kind of sadness you can’t chew through.
+
+So I move closer.
+Slowly.
+Until my head rests against his arm.
+He doesn’t pet me right away — but he always does, eventually.
+A lazy hand, rough but gentle, finds my fur.
+It’s like a light flicks back on inside him for a second.
+
+Then he whispers, “Good boy.”
+And I know that means don’t leave me yet.
+
+So I don’t.
+Not ever.
+
+I keep watch.
+Eyes open just enough to see shapes move in the dark.
+Ears turned to the night, in case something tries to come between him and morning.
+If the wind shifts, I notice.
+If his breathing changes, I adjust.
+
+He drifts, half-asleep, half-lost somewhere else.
+And I keep him anchored.
+Because when he dreams, sometimes I think he forgets he’s safe.
+
+I lick his hand once before I close my eyes.
+He doesn’t feel it — but maybe his heart does.
+
+When the sun finally starts creeping in, I yawn big and stretch like I worked all night.
+Because I did.
+
+He looks down at me, smiles a little.
+“Thanks, bud,” he says.
+Then he stands, slower than usual.
+We start a new day like nothing happened —
+but I know what did.
+
+He didn’t fall apart in the dark.
+Because I didn’t let him. </p>
+  `},
+
+  {title:"Buddy’s Route", html:`
+    <p> Morning again.
+My guy yawns, grabs his hat, and we’re off.
+Same streets, same smells, same plan: find shade, find snacks, find smiles.
+I call it “Buddy’s Route.”
+
+First stop: the Gas Station Queens.
+That’s what I call them.
+All ladies. All heart.
+They open the door before we even get there.
+“Buddy!” they shout like I’m a celebrity.
+And, honestly, I kinda am.
+
+They always have water ready, and if my belly looks too warm,
+they wave me inside like I own the place.
+Cold tile floors?
+Five-star spa treatment.
+I flop down right in front of the counter,
+legs out, tongue out, just cooling off.
+
+They laugh, call me handsome,
+and slip me a little something from behind the counter.
+If my guy’s short on cash, they say,
+“Don’t worry about it—Buddy’s good here.”
+If something ever happened to me,
+I think they’d form a whole army.
+I’m their boy.
+
+After that, we make the rounds.
+Dollar General.
+The door whooshes open, and people smile like they were waiting on me.
+He always buys little things—snacks, wipes, batteries—
+but I think what he’s really buying is conversation.
+That’s okay. I wag for both of us.
+
+Burger King comes next.
+The smell hits before the sign does.
+I know that smell anywhere.
+He orders, and I already know—
+some of that’s mine.
+Always is.
+A fry here, a burger bite there.
+It’s an unspoken deal between us:
+I stay cool, he shares food.
+
+We swing by Applebee’s too.
+The folks there—they’re like extended pack members.
+They know I’ll lay under the table and mind my business.
+Somebody always drops a “sneaky snack.”
+They act like it’s an accident.
+It’s not.
+
+And out on the bridge,
+where we stand and hold that sign,
+I see cars roll by, windows down, people waving.
+Some toss dollars, some toss words.
+All of them? They toss love.
+And that’s worth more than any number he could count.
+
+He jokes sometimes, says,
+“If every car gave a dollar, we’d be rich, Bud.”
+But I don’t care about dollars.
+I care about days like this—
+where the world knows my name
+and treats my human like he matters too.
+
+Because we give that money right back.
+To the people who see us, feed us,
+laugh with us.
+The same ones who make this town feel less like a map
+and more like home.
+
+And me?
+I don’t really work for money.
+I work for fries.
+And hugs.
+And for that one quiet look he gives me every night—
+the one that says,
+“We made it another day, bud.” </p>
+  `},
+
+  {title:"Rainy Day Royalties", html:`
+    <p> Rain days start with that smell — the one that says don’t even think about napping outside today, furball.
+My guy looks up, sighs, and says, “Well, Buddy… guess it’s one of those days.”
+He’s right.
+The clouds have that grumpy gray look, and I can feel the thunder stretching somewhere far off.
+
+We hustle.
+He pulls the hood up; I shake water all over his jeans — fair trade.
+And where do we go first?
+My palace.
+The gas station.
+
+The queens are already watching through the glass like weather gods.
+They see me sprinting across the puddles,
+ears flying, tail wagging like a windshield wiper.
+The door opens before we even reach it.
+“Get in here, Buddy!” one of them yells.
+And just like that, I’m royalty again.
+
+Tile floors cold, rain dripping off my whiskers,
+they hand my guy a towel and me a treat.
+I flop down under the counter, my belly against the cool floor,
+and the thunder grumbles a few times like it’s jealous.
+
+They talk about their kids, about bills, about life —
+and somehow, between the laughter and the beeps of the register,
+I realize:
+this place doesn’t just keep us dry.
+It keeps us human.
+Even me.
+
+My guy leans against the counter, laughing with them,
+the kind of laugh that sounds like he’s forgetting to be tired.
+They ask about the bridge, about the weather, about me,
+like we’re old friends —
+which we are.
+
+Someone slips me a piece of jerky and whispers,
+“Don’t tell your dad.”
+I don’t.
+Dogs know how to keep royal secrets.
+
+The rain keeps falling,
+but it’s not mean about it anymore.
+It’s steady, soft, patient.
+And when it finally stops, the air smells brand new.
+My guy looks down at me,
+and for a second,
+he doesn’t look lost.
+He looks home.
+
+We thank the ladies — my ladies —
+and step back outside.
+Puddles everywhere,
+but the sun’s peeking through,
+and my paws splash like drums in a victory parade.
+
+Every kingdom needs a crown.
+Mine’s just made of water, smiles, and beef jerky. </p>
+  `},
+
+  {title:"A-O-K", html:`
+    <p> Night hits different.
+The world gets quiet enough for my thoughts to talk back.
+Bugs buzz like they’re arguing about rent,
+and Daddy’s muttering something about being out of cigarettes again.
+
+He thinks I don’t notice when he digs through his pack for the last one.
+I do.
+I always do.
+It’s the same thing every night —
+he lights it, stares at the sky like it owes him answers,
+and I lay there scratching, trying to ignore the mosquitoes treating me like a buffet.
+
+We don’t have a house.
+We’ve got spots.
+This one’s under some trees behind the gas station.
+Not too far from the bridge,
+not too close to the noise.
+It’s warm, smells like dirt and old memories.
+
+He thinks he can only make money during the day.
+That’s what he tells himself.
+But I’ve seen him glow in the dark —
+not with light, but with purpose.
+When the sun’s gone, his shoulders drop,
+and for a little while,
+he’s just a man breathing again.
+
+I’d tell him if I could —
+money ain’t the only thing people hand us.
+They give us smiles, fries, pieces of their heart.
+He spends every bit of it back into this town —
+at the gas station, the burger joint, the Applebee’s.
+It’s like a big circle.
+Money, food, kindness —
+it all loops right back to where it came from.
+Even I can see that,
+and I lick myself for a living.
+
+One night, though — this is where it gets weird —
+we found a cat.
+Tiny thing.
+Looked like spilled shadow with whiskers.
+Right outside the gas station, just sitting there,
+lost and mewing like the world forgot to turn down its volume.
+
+Daddy said, “Stay, Buddy.”
+Ha.
+Sure.
+Next thing he knows, I’m sprinting across the road,
+chasing that kitten like it owed me rent.
+Traffic whooshing, lights flashing —
+but I didn’t care.
+That little fuzzball was A-O-K once I got to him.
+
+Funny thing?
+A week later, that same cat’s sitting outside Applebee’s,
+getting fed fries and attention like a celebrity.
+Turns out he’s got a home now.
+Just needed someone to chase him out of danger first.
+
+That’s how it goes out here.
+We’re all just chasing someone or something across a road,
+hoping to make it to the other side.
+
+Oh, and that K-O-A thing?
+Daddy says it’s “Campgrounds of America.”
+But me, I think it’s backwards on purpose.
+Because every time we find a patch of shade,
+every time we get through another day without losing our spot,
+every time somebody smiles at us instead of pretending we’re invisible—
+everything really is
+A-O-K.
+</p>
+  `},
+
+  {title:"Blue Lights and Heartbeats", html:`
+    <p> The woods were quiet until they weren’t.
+One second, it’s just crickets and moonlight —
+the next, a low rumble rolls through the trees.
+Headlights slice the dark like curious eyes.
+Red. Blue. Red. Blue.
+
+Daddy stops breathing for a second.
+Not all the way — just enough to tell me something’s wrong.
+I can feel his heartbeat jump under my paw.
+That’s how I know.
+
+The voices come next — polite but sharp.
+“Evenin’,” one says.
+It sounds like small talk,
+but Daddy hears it like a question he’s been asked too many times.
+
+He says, “We’re good.”
+His voice is calm, but his fingers twitch at my leash.
+He’s not afraid of them —
+he’s afraid around them.
+Like the air itself remembers something he’d rather forget.
+
+I don’t know what uniforms are.
+I just see bright vests, shiny badges,
+and smell metal, rain, and old coffee.
+To me, they’re just humans —
+but to Daddy, they’re the storm before he even feels the rain.
+
+One of them kneels down a little, flashlight in my eyes.
+“Well hey there, Buddy,” he says.
+And I wag, because that’s what I do.
+If I wag, maybe everyone remembers to be kind.
+
+They talk a few minutes longer,
+words I don’t understand but feelings I do.
+Tension smells like sweat and wet bark.
+Then the lights fade,
+the engines hum away,
+and silence climbs back over everything.
+
+Daddy sits down hard, like the ground’s the only thing holding him steady.
+He runs a hand through his hair and laughs once — not happy,
+just grateful to be breathing.
+I press my head against his chest until his heartbeat slows again.
+
+“Good boy,” he whispers,
+and his voice sounds like something breaking open in a good way.
+
+The crickets start singing again,
+the world forgives the noise,
+and the night remembers how to be gentle.
+
+And me?
+I stay close.
+Because sometimes heroes don’t wear capes or badges.
+Sometimes they wear dirt, worry, and a dog leaning on their knee.
+</p>
+  `},
+
+  {title:"No More Bugs", html:`
+    <p> It’s quiet again,
+but Daddy can’t sleep.
+
+He keeps swatting at the air,
+grumbling under his breath,
+rolling around like the ground’s got teeth.
+And maybe it does —
+because the bugs are back.
+
+Not just one or two —
+a whole army of buzzing little vampires.
+They don’t care if you’re tired,
+or broke,
+or just trying to breathe under the trees.
+They come for everyone.
+
+Daddy mutters, “I’m so sick of these damn bugs.”
+He says it like a prayer that’s out of patience.
+I don’t blame him.
+They’ve chewed him up pretty good —
+neck, arms, ankles, even his ears.
+He scratches, sighs, scratches again.
+
+I curl up next to him,
+but I keep one eye open.
+When you live outside,
+the dark never really goes away —
+it just takes a nap too.
+
+He flicks his lighter,
+not to smoke this time,
+just to chase them off.
+Tiny glow, shaky hand,
+a man trying to scare away the night with fire.
+
+“Buddy,” he whispers,
+“no more bugs, huh?”
+
+I wag my tail slow.
+If I could talk,
+I’d tell him it’s okay to be tired.
+I’d tell him he’s not fighting alone.
+But I can’t —
+so I just breathe beside him,
+deep and steady,
+like a metronome for the heart.
+
+Eventually, his hand finds my back,
+heavy and warm.
+His eyes close for a minute,
+then open again.
+He can’t rest long —
+not when the world keeps nipping at him.
+
+The bugs keep buzzing.
+The stars keep blinking.
+And me?
+I keep watch.
+Because if my job is to keep Daddy safe,
+then no bug, no fear, no long night
+gets past me. </p>
+  `},
+
+  {title:"Everything Helps", html:`
+    <p> The sun comes up slow — like it’s not sure if today’s worth the trouble.
+By the time it climbs over the trees, Daddy’s already on his feet again.
+Same jeans, same hat, same quiet.
+
+I know what that means.
+Bridge time.
+
+He packs the sign — the one with big, shaky letters that say EVERYTHING HELPS.
+He made it himself.
+The words aren’t fancy, but they work.
+People read it.
+Some wave. Some stop.
+Some pretend not to see us,
+but that’s okay —
+we see them.
+
+We walk out to the same spot by the guardrail.
+The air’s thick, the road hums, and the smell of asphalt and exhaust wraps around us like a blanket nobody asked for.
+He stands there, still as a statue,
+and I sit in the patch of shade right by his legs.
+That’s my job.
+Stay cool. Stay close. Stay Buddy.
+
+Cars roll by — hundreds of them.
+I count by tails, not by wheels.
+Each one has a story I’ll never know,
+but some of them share pieces anyway.
+A fry. A dollar. A smile.
+Some toss nothing but a look —
+and somehow that’s enough.
+
+He doesn’t say much while we’re out here.
+He doesn’t need to.
+The sign does the talking.
+And me?
+I do the charm.
+
+The lady from the gas station honks and waves.
+One of the cops passes slow, gives Daddy a nod.
+Even they know the routine now.
+We’re part of the landscape —
+like the bridge, like the heat shimmer, like hope that refuses to sit still.
+
+Sometimes Daddy stares at the cars,
+and I know what he’s thinking —
+If everyone just gave a dollar.
+But it’s not really about that.
+It’s about being seen.
+About reminding the world that we’re still standing.
+Still breathing.
+Still here.
+
+The wind picks up,
+and the corner of the sign flaps like a flag.
+For a second, it looks like it’s waving back at the cars,
+like it’s saying,
+“Hey, we’re okay. You’re okay. Everything helps.”
+
+And in that moment,
+I believe it.
+Because every honk, every wave,
+every fry and every “Hang in there,”
+is a little piece of proof
+that kindness still drives by.
+</p>
+  `},
+
+  {title:"Chapter 11", html:`
+    <p>To be contiued…</p>
+  `},
+
+  {title:"Chapter 12", html:`
+    <p> To be contiued… </p>
+  `}
+];
+
+/* Build page list: inside-left blank + TOC + chapters */
+const pages = [];
+pages.push({title:"", html:""});        // inside-left blank
+pages.push(chapters[0]);                // inside-right = TOC
+for(let i=1;i<chapters.length;i++) pages.push(chapters[i]);
+
+const folio = document.getElementById('folio');
+const book  = document.getElementById('book');
+const view  = document.getElementById('view');
+const cover = document.getElementById('frontCover');
+
+/* Build leaves (each leaf has left+right pages) */
+const leaves = [];
+const leafCount = Math.ceil(pages.length/2);
+for(let i=0;i<leafCount;i++){
+  const leaf = document.createElement('div');
+  leaf.className = 'leaf';
+  leaf.dataset.idx = i;
+  leaf.style.zIndex = String(500 - i);   // topmost is smallest i
+
+  const left  = document.createElement('div'); left.className='page left';
+  const right = document.createElement('div'); right.className='page right';
+
+  const lp = document.createElement('div'); lp.className='paper';
+  const rp = document.createElement('div'); rp.className='paper';
+
+  left.appendChild(lp); right.appendChild(rp);
+  leaf.appendChild(left); leaf.appendChild(right);
+  folio.appendChild(leaf);
+  leaves.push({leaf,left,right,lp,rp});
+}
+
+/* Fill content */
+let p=0;
+for(let i=0;i<leaves.length;i++){
+  const L = leaves[i];
+  const Lp = pages[p++] || {title:"",html:""};
+  const Rp = pages[p++] || {title:"",html:""};
+  L.lp.innerHTML = Lp.title ? `<div class="section-label">Page</div><h3>${Lp.title}</h3>${Lp.html}` : '';
+  L.rp.innerHTML = Rp.title ? `<div class="section-label">Page</div><h3>${Rp.title}</h3>${Rp.html}` : '';
+}
+
+/* Flip engine with z-index restack to prevent flicker/overlap */
+let currentIndex = 0;
+function restack(){
+  leaves.forEach((L,i)=>{
+    const flipped = L.leaf.classList.contains('flipped');
+    L.leaf.style.zIndex = flipped ? String(100 + i) : String(500 - i);
+  });
+}
+function flipNext(){
+  if(currentIndex >= leaves.length - 1) return;
+  leaves[currentIndex].leaf.classList.add('flipped');
+  currentIndex++; restack();
+}
+function flipPrev(){
+  if(currentIndex <= 0) return;
+  currentIndex--;
+  leaves[currentIndex].leaf.classList.remove('flipped');
+  restack();
+}
+
+/* Swipe (open only) */
+let swiping=false, sx=0;
+view.addEventListener('touchstart', (e)=>{
+  if(!book.classList.contains('open')) return;
+  swiping=true; sx=e.touches[0].clientX;
+}, {passive:true});
+view.addEventListener('touchend', (e)=>{
+  if(!book.classList.contains('open')||!swiping) return; swiping=false;
+  const ex = (e.changedTouches && e.changedTouches[0].clientX) || sx;
+  const dx = ex - sx;
+  if(Math.abs(dx) > 70){ dx<0 ? flipNext() : flipPrev(); }
+}, {passive:true});
+
+/* TOC jump */
+folio.addEventListener('click', (e)=>{
+  const a = e.target.closest('[data-go]');
+  if(!a) return;
+  e.preventDefault();
+  const goto = parseInt(a.dataset.go, 10);
+  const pageIndex = goto + 1;                  // pages[1] is TOC
+  const leafTarget = Math.floor(pageIndex/2);
+  leaves.forEach((L,i)=> L.leaf.classList.toggle('flipped', i < leafTarget));
+  currentIndex = leafTarget;
+  restack();
+});
+
+/* Rotation (closed only) */
+let rotateEnabled = true, dragging=false, lx=0, ly=0, rx=8, ry=-18;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function applyRot(){ book.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`; }
+
+view.addEventListener('pointerdown', e=>{
+  if(!rotateEnabled) return;
+  dragging=true; lx=e.clientX; ly=e.clientY;
+  view.setPointerCapture(e.pointerId); view.classList.add('grabbing');
+});
+view.addEventListener('pointermove', e=>{
+  if(!dragging || !rotateEnabled) return;
+  const dx=e.clientX-lx, dy=e.clientY-ly;
+  ry = clamp(ry + dx*0.14, -40, 40);
+  rx = clamp(rx - dy*0.09, -12, 25);
+  applyRot(); lx=e.clientX; ly=e.clientY;
+});
+window.addEventListener('pointerup', ()=>{ dragging=false; view.classList.remove('grabbing'); });
+
+/* Open (double-tap on cover) */
+function openBook(){
+  if(book.classList.contains('open')) return;
+  book.classList.add('open');
+  rotateEnabled = false;                 // lock rotation
+  book.style.transform='rotateX(0) rotateY(0)';
+  // ensure start at inside cover (TOC on right)
+  leaves.forEach((L)=> L.leaf.classList.remove('flipped'));
+  currentIndex = 0; restack();
+}
+// robust dbl-tap: native + timing window
+cover.addEventListener('dblclick', openBook);
+let tapTime=0;
+cover.addEventListener('click', ()=>{
+  const now=performance.now();
+  if(now - tapTime < 400) openBook();
+  tapTime = now;
+});
+
+// init
+restack();
+})();
+</script>
+</body>
+</html>
